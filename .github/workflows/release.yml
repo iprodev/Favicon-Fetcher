@@ -54,6 +54,11 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Download dependencies
+        run: |
+          go mod tidy
+          go mod download
+
       - name: Build binary
         env:
           GOOS: ${{ matrix.os }}
