@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  favicon-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: favicon-fetcher:latest
+    container_name: favicon-server
+    ports:
+      - "9090:9090"
+    volumes:
+      # Persistent cache
+      - favicon-cache:/app/cache
+    environment:
+      - PORT=9090
+      - CACHE_DIR=/app/cache
+    command: >
+      -addr :9090
+      -cache-dir /app/cache
+      -cache-ttl 24h
+      -browser-max-age 1h
+      -cdn-smax-age 24h
+      -janitor-interval 30m
+      -max-cache-size-bytes 1073741824
+      -log-level info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - favicon-network
+
+  # Optional: Prometheus for metrics (when implemented)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   ports:
+  #     - "9091:9090"
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - favicon-network
+
+  # Optional: Grafana for visualization
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   networks:
+  #     - favicon-network
+
+volumes:
+  favicon-cache:
+    driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
+
+networks:
+  favicon-network:
+    driver: bridge
