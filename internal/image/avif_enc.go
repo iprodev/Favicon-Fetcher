@@ -9,9 +9,7 @@ import (
 	"github.com/gen2brain/avif"
 )
 
-// encodeAsAVIF encodes an image to AVIF format with the specified quality.
-// Quality ranges from 0 (worst) to 100 (best). Default is 75.
-// AVIF typically provides 20-30% better compression than WebP.
+// encodeAsAVIF encodes an image to AVIF format.
 func encodeAsAVIF(img image.Image, quality int) ([]byte, error) {
 	if quality <= 0 {
 		quality = 75
@@ -20,17 +18,17 @@ func encodeAsAVIF(img image.Image, quality int) ([]byte, error) {
 		quality = 100
 	}
 
+	var buf bytes.Buffer
+
 	opts := avif.Options{
-		Quality:           quality,
-		QualityAlpha:      quality,
-		Speed:             6, // 0-10, higher is faster but lower quality
-		ChromaSubsampling: avif.YUV420, // Best compression for icons
+		Quality: quality,
+		Speed:   6, // 0-10, higher is faster
 	}
 
-	var buf bytes.Buffer
 	if err := avif.Encode(&buf, img, opts); err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), nil
 }
 

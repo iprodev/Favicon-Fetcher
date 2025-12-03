@@ -130,8 +130,10 @@ func FaviconHandler(cfg *Config) http.HandlerFunc {
 					logger.Debug("SVG rasterization failed for %s: %v", iconURL, err)
 					continue
 				}
-				if imgpkg.IsNearlyBlankOrBlack(img) {
-					logger.Debug("SVG rendered as blank/black for %s, skipping", iconURL)
+				// Only skip if the image is completely blank (all white/transparent)
+				// Don't skip black/dark SVGs as they might be valid (e.g., GitHub logo)
+				if imgpkg.IsNearlyBlank(img) {
+					logger.Debug("SVG rendered as blank for %s, skipping", iconURL)
 					continue
 				}
 				area = 1 << 50 // SVG priority
