@@ -10,6 +10,7 @@ import (
 )
 
 // encodeAsAVIF encodes an image to AVIF format.
+// The gen2brain/avif library preserves alpha channel automatically.
 func encodeAsAVIF(img image.Image, quality int) ([]byte, error) {
 	if quality <= 0 {
 		quality = 75
