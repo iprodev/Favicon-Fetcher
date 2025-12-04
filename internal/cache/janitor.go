@@ -216,5 +216,6 @@ func isCacheFile(p string) bool {
 	sep := string(filepath.Separator)
 	return strings.Contains(p, sep+"orig"+sep) ||
 		strings.Contains(p, sep+"resized"+sep) ||
-		strings.Contains(p, sep+"fallback"+sep)
+		strings.Contains(p, sep+"fallback"+sep) ||
+		strings.Contains(p, sep+"resolved"+sep)
 }

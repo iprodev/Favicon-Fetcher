@@ -28,6 +28,13 @@ type OrigMeta struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// ResolvedIcon contains the mapping from a page URL to its best icon URL.
+type ResolvedIcon struct {
+	PageURL    string    `json:"page_url"`
+	IconURL    string    `json:"icon_url"`
+	ResolvedAt time.Time `json:"resolved_at"`
+}
+
 // New creates a new cache Manager with the specified directory and TTL.
 // The cache directory will be created if it doesn't exist.
 func New(cacheDir string, ttl time.Duration) *Manager {
@@ -44,6 +51,7 @@ func (m *Manager) EnsureDirs() error {
 		m.OrigCacheDir(),
 		m.ResizedCacheDir(),
 		m.FallbackCacheDir(),
+		m.ResolvedCacheDir(),
 	} {
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			return err
@@ -65,6 +73,11 @@ func (m *Manager) ResizedCacheDir() string {
 // FallbackCacheDir returns the path to the fallback images cache directory.
 func (m *Manager) FallbackCacheDir() string {
 	return filepath.Join(m.CacheDir, "fallback")
+}
+
+// ResolvedCacheDir returns the path to the resolved icon mappings cache directory.
+func (m *Manager) ResolvedCacheDir() string {
+	return filepath.Join(m.CacheDir, "resolved")
 }
 
 // ReadOrigFromCache attempts to read an original image from cache.
@@ -156,6 +169,40 @@ func (m *Manager) ReadResizedFromCacheWithMod(iconURL string, size int, format s
 		return nil, false, time.Time{}
 	}
 	return b, true, info.ModTime()
+}
+
+// ReadResolvedIcon reads the cached icon URL mapping for a page URL.
+// Returns the resolved icon info and true if found and not expired.
+func (m *Manager) ReadResolvedIcon(pageURL string) (ResolvedIcon, bool) {
+	p := filepath.Join(m.ResolvedCacheDir(), hash("resolved|"+pageURL)+".json")
+	info, err := os.Stat(p)
+	if err != nil {
+		return ResolvedIcon{}, false
+	}
+	if time.Since(info.ModTime()) > m.TTL {
+		return ResolvedIcon{}, false
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ResolvedIcon{}, false
+	}
+	var resolved ResolvedIcon
+	if err := json.Unmarshal(data, &resolved); err != nil {
+		return ResolvedIcon{}, false
+	}
+	return resolved, true
+}
+
+// WriteResolvedIcon writes the icon URL mapping for a page URL to cache.
+func (m *Manager) WriteResolvedIcon(pageURL, iconURL string) error {
+	p := filepath.Join(m.ResolvedCacheDir(), hash("resolved|"+pageURL)+".json")
+	resolved := ResolvedIcon{
+		PageURL:    pageURL,
+		IconURL:    iconURL,
+		ResolvedAt: time.Now(),
+	}
+	data, _ := json.MarshalIndent(resolved, "", "  ")
+	return atomicWriteFile(p, data)
 }
 
 func atomicWriteFile(p string, data []byte) error {

@@ -108,6 +108,28 @@ func FaviconHandler(cfg *Config) http.HandlerFunc {
 			return
 		}
 
+		// Canonical page URL for cache lookup
+		canonPageURL := discovery.CanonicalizeURLString(u.String())
+
+		// Check if we have a cached resolved icon for this page
+		if resolved, ok := cfg.CacheManager.ReadResolvedIcon(canonPageURL); ok {
+			// Try to serve from resized cache directly
+			if b, ok, mod := cfg.CacheManager.ReadResizedFromCacheWithMod(resolved.IconURL, size, wantFormat); ok && len(b) > 0 {
+				logger.Debug("Cache hit for %s -> %s", canonPageURL, resolved.IconURL)
+				serveBytes(w, r, b, imgpkg.ContentTypeFor(wantFormat), mod, cfg)
+				return
+			}
+			// If resized not found, try to re-encode from original
+			if origBytes, ok := cfg.CacheManager.ReadOrigFromCache(resolved.IconURL); ok {
+				img, err := decodeAndResize(origBytes, resolved.IconURL, size)
+				if err == nil && img != nil {
+					serveImageVariantWithSource(w, r, img, size, wantFormat, time.Now(), resolved.IconURL, cfg)
+					return
+				}
+			}
+			// Cache entry exists but icon is gone, fall through to re-discover
+		}
+
 		// Discover and fetch icons
 		candidates := discovery.DiscoverFromPageThenRoot(ctx, u, size)
 		var best image.Image
@@ -161,6 +183,9 @@ func FaviconHandler(cfg *Config) http.HandlerFunc {
 			serveImageVariant(w, r, nil, size, wantFormat, time.Now(), cfg)
 			return
 		}
+
+		// Cache the resolved icon mapping for future requests
+		_ = cfg.CacheManager.WriteResolvedIcon(canonPageURL, bestSrc)
 
 		serveImageVariantWithSource(w, r, best, size, wantFormat, time.Now(), bestSrc, cfg)
 	}
@@ -336,4 +361,25 @@ func peek512(b []byte) []byte {
 // CanonicalizeURLString is exported for discovery
 func CanonicalizeURLString(raw string) string {
 	return discovery.CanonicalizeURLString(raw)
+}
+
+// decodeAndResize decodes image bytes and resizes to target size
+func decodeAndResize(origBytes []byte, srcURL string, size int) (image.Image, error) {
+	ct := http.DetectContentType(peek512(origBytes))
+	var img image.Image
+	var err error
+
+	if discovery.IsSVGContentType(ct, srcURL) {
+		img, err = imgpkg.RasterizeSVG(origBytes, size, size)
+	} else if discovery.IsICO(ct, srcURL) {
+		img, err = imgpkg.DecodeICOSelectLargest(origBytes)
+	} else {
+		img, err = imgpkg.DecodeImageRasterOnly(origBytes)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return imgpkg.ResizeImage(img, size), nil
 }
