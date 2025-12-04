@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates tzdata
@@ -9,13 +9,16 @@ WORKDIR /build
 
 # Copy go mod files
 COPY go.mod go.sum ./
+
+# Enable auto toolchain to download required Go version
+ENV GOTOOLCHAIN=auto
 RUN go mod download
 
 # Copy source code
 COPY . .
 
 # Build the application with full format support (PNG, WebP, AVIF)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.Version=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
     -trimpath \
     -o favicon-server \

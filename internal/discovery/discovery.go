@@ -30,7 +30,13 @@ type IconCandidate struct {
 func DiscoverFromPageThenRoot(ctx context.Context, pageURL *url.URL, targetSize int) []IconCandidate {
 	cands := collectPageIcons(ctx, pageURL, targetSize)
 
-	// Add fallback root paths
+	// If no icons found from page, try root of current domain
+	if len(cands) == 0 && pageURL.Path != "/" && pageURL.Path != "" {
+		rootURL := &url.URL{Scheme: pageURL.Scheme, Host: pageURL.Host, Path: "/"}
+		cands = collectPageIcons(ctx, rootURL, targetSize)
+	}
+
+	// Add fallback root paths for current domain
 	rootHTTPS := "https://" + pageURL.Host + "/favicon.ico"
 	rootHTTP := "http://" + pageURL.Host + "/favicon.ico"
 
@@ -40,6 +46,21 @@ func DiscoverFromPageThenRoot(ctx context.Context, pageURL *url.URL, targetSize 
 	} else {
 		cands = append(cands, IconCandidate{URL: rootHTTP, RelRank: 3})
 		cands = append(cands, IconCandidate{URL: rootHTTPS, RelRank: 3})
+	}
+
+	// Fallback to parent domain (e.g., app.docker.com -> docker.com)
+	parentHost := getParentDomain(pageURL.Host)
+	if parentHost != "" && parentHost != pageURL.Host {
+		parentURL := &url.URL{Scheme: pageURL.Scheme, Host: parentHost, Path: "/"}
+		parentCands := collectPageIcons(ctx, parentURL, targetSize)
+		for i := range parentCands {
+			parentCands[i].RelRank += 10 // Lower priority than current domain
+		}
+		cands = append(cands, parentCands...)
+
+		// Add parent domain favicon.ico
+		cands = append(cands, IconCandidate{URL: "https://" + parentHost + "/favicon.ico", RelRank: 13})
+		cands = append(cands, IconCandidate{URL: "http://" + parentHost + "/favicon.ico", RelRank: 13})
 	}
 
 	// Sort by priority
@@ -279,6 +300,44 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// getParentDomain returns the parent domain (e.g., app.docker.com -> docker.com)
+// Returns empty string if no valid parent exists
+func getParentDomain(host string) string {
+	// Remove port if present
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		host = host[:idx]
+	}
+
+	parts := strings.Split(host, ".")
+	
+	// Need at least 3 parts (sub.domain.tld)
+	if len(parts) < 3 {
+		return ""
+	}
+
+	// Handle common TLDs like .co.uk, .com.br, etc.
+	if len(parts) >= 3 {
+		lastTwo := parts[len(parts)-2] + "." + parts[len(parts)-1]
+		if isCompoundTLD(lastTwo) && len(parts) >= 4 {
+			// e.g., app.example.co.uk -> example.co.uk
+			return strings.Join(parts[1:], ".")
+		}
+	}
+
+	// Normal case: app.docker.com -> docker.com
+	return strings.Join(parts[1:], ".")
+}
+
+// isCompoundTLD checks for common compound TLDs
+func isCompoundTLD(tld string) bool {
+	compoundTLDs := map[string]bool{
+		"co.uk": true, "co.jp": true, "co.kr": true, "co.nz": true,
+		"com.au": true, "com.br": true, "com.cn": true, "com.mx": true,
+		"org.uk": true, "net.au": true, "ac.uk": true, "gov.uk": true,
+	}
+	return compoundTLDs[tld]
 }
 
 func IsICO(contentType, srcURL string) bool {
